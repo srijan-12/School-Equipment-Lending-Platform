@@ -1,0 +1,17 @@
+{
+  "name": "school-equipment-lending",
+  "private": true,
+  "description": "FSAD-style full stack: React + Node microservices + MongoDB + API gateway",
+  "scripts": {
+    "install:all": "npm install --prefix BE/gateway && npm install --prefix BE/services/auth-service && npm install --prefix BE/services/equipment-service && npm install --prefix BE/services/booking-service && npm install --prefix FE/frontend",
+    "dev:auth": "npm run dev --prefix BE/services/auth-service",
+    "dev:equipment": "npm run dev --prefix BE/services/equipment-service",
+    "dev:booking": "npm run dev --prefix BE/services/booking-service",
+    "dev:gateway": "npm run dev --prefix BE/gateway",
+    "dev:frontend": "npm run dev --prefix FE/frontend",
+    "dev": "concurrently -n auth,equip,book,gw,fe -c blue,green,magenta,yellow,cyan \"npm run dev:auth\" \"npm run dev:equipment\" \"npm run dev:booking\" \"npm run dev:gateway\" \"npm run dev:frontend\""
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2"
+  }
+}

@@ -1,0 +1,193 @@
+openapi: 3.0.3
+info:
+  title: School Equipment Lending API
+  description: |
+    REST API behind the API Gateway (`/api/*`). JWT bearer tokens are issued by **Auth** (`POST /api/auth/login`).
+    Microservices: auth (4001), equipment (4002), booking (4003); gateway defaults to port 8080.
+    Persistence: **MongoDB**. Equipment documents include **quantity** (total stock) and **availability** (units free now), plus legacy fields `quantity_total` / `quantity_available`.
+    **Equipment management** (create/update/delete) requires **`role: admin`**.
+  version: 1.0.0
+servers:
+  - url: http://localhost:8080
+    description: Local gateway
+tags:
+  - name: Auth
+  - name: Equipment
+  - name: Bookings
+paths:
+  /api/auth/register:
+    post:
+      tags: [Auth]
+      summary: Register (student or staff role only; admin created separately)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password, full_name]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string }
+                full_name: { type: string }
+                role: { type: string, enum: [student, staff] }
+      responses:
+        "201":
+          description: Created
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Login — returns JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string }
+                password: { type: string }
+      responses:
+        "200":
+          description: OK
+  /api/auth/me:
+    get:
+      tags: [Auth]
+      summary: Current user profile
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+  /api/equipment:
+    get:
+      tags: [Equipment]
+      summary: List equipment (optional filters)
+      parameters:
+        - name: category
+          in: query
+          schema: { type: string }
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: availableOnly
+          in: query
+          schema: { type: string, enum: ["true", "1", "false", "0"] }
+      responses:
+        "200":
+          description: OK
+    post:
+      tags: [Equipment]
+      summary: Create equipment (admin)
+      security: [{ bearerAuth: [] }]
+      responses:
+        "201":
+          description: Created
+  /api/equipment/{id}:
+    get:
+      tags: [Equipment]
+      summary: Get equipment by id
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+    patch:
+      tags: [Equipment]
+      summary: Update equipment (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+    delete:
+      tags: [Equipment]
+      summary: Delete equipment (admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "204":
+          description: Deleted
+  /api/bookings:
+    get:
+      tags: [Bookings]
+      summary: List bookings (students see own; staff/admin see all unless mine=1)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: mine
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+    post:
+      tags: [Bookings]
+      summary: Request a booking (pending)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [equipment_id, start_date, end_date]
+              properties:
+                equipment_id: { type: integer }
+                start_date: { type: string, format: date }
+                end_date: { type: string, format: date }
+                notes: { type: string }
+      responses:
+        "201":
+          description: Created
+  /api/bookings/{id}:
+    get:
+      tags: [Bookings]
+      summary: Booking detail
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      responses:
+        "200":
+          description: OK
+    patch:
+      tags: [Bookings]
+      summary: Approve, reject, issue, or return (staff/admin)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [action]
+              properties:
+                action:
+                  type: string
+                  enum: [approve, reject, issue, return]
+      responses:
+        "200":
+          description: OK
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
