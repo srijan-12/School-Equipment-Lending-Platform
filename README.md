@@ -323,6 +323,7 @@ Deploy the `FE/frontend/dist` assets behind any static host; configure that host
 | **Mongo connection errors** | Ensure MongoDB is running and `MONGODB_URI` matches your setup (auth vs no auth). |
 | **Cannot log in as demo admin** | Database may already contain users without the seed user; reset `users` or drop `lending_db` for a clean seed. |
 | **403 on equipment POST/PATCH** | Only **`admin`** can mutate inventory; log in as `admin@school.edu`. |
+| **`Could not create booking`** (was failing before fix) | Usually caused by MongoDB **standalone** mode: multi-document **transactions** are not supported without a replica set. This project’s booking service avoids transactions so local `mongod` works. If you still see errors, sign out and sign in again (JWT must carry a MongoDB user id). |
 
 ---
 

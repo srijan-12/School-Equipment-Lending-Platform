@@ -4,8 +4,8 @@ This folder holds the **browser client** for the School Equipment Lending Platfo
 
 ## Contents
 
-| Path | Description |
-|------|-------------|
+| Path            | Description                                                                       |
+| --------------- | --------------------------------------------------------------------------------- |
 | **`frontend/`** | React 18 + Vite SPA: routing, auth context, catalog, bookings, admin inventory UI |
 
 ## Requirements
@@ -53,5 +53,5 @@ Static output is written to **`FE/frontend/dist/`**. Serve those files behind an
 
 ## Related docs
 
-- Root **[README.md](../README.md)** — full project overview and run instructions  
-- **[docs/component-hierarchy.md](../docs/component-hierarchy.md)** — React component structure  
+- Root **[README.md](../README.md)** — full project overview and run instructions
+- **[docs/component-hierarchy.md](../docs/component-hierarchy.md)** — React component structure

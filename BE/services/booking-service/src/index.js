@@ -107,32 +107,28 @@ function serializeBooking(b, extras = {}) {
 }
 
 app.post("/bookings", authRequired, async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     const { equipment_id, start_date, end_date, notes } = req.body || {};
     if (!equipment_id || !start_date || !end_date) {
-      await session.abortTransaction();
       return res.status(400).json({ error: "equipment_id, start_date, end_date required" });
     }
+    if (!mongoose.isValidObjectId(req.user.sub)) {
+      return res.status(401).json({ error: "Invalid session; please sign in again" });
+    }
     if (!mongoose.isValidObjectId(equipment_id)) {
-      await session.abortTransaction();
       return res.status(400).json({ error: "Invalid equipment_id" });
     }
     if (!(await equipmentExists(equipment_id))) {
-      await session.abortTransaction();
       return res.status(404).json({ error: "Equipment not found" });
     }
     const start = day(new Date(String(start_date)));
     const end = day(new Date(String(end_date)));
     if (end < start) {
-      await session.abortTransaction();
       return res.status(400).json({ error: "end_date must be on or after start_date" });
     }
 
     const fit = await scheduleFits(equipment_id, start, end, null);
     if (!fit.ok) {
-      await session.abortTransaction();
       return res.status(409).json({
         error:
           fit.reason === "not_found"
@@ -141,27 +137,23 @@ app.post("/bookings", authRequired, async (req, res) => {
       });
     }
 
-    const [created] = await Booking.create(
-      [
-        {
-          user_id: new mongoose.Types.ObjectId(req.user.sub),
-          equipment_id: new mongoose.Types.ObjectId(equipment_id),
-          status: "pending",
-          start_date: start,
-          end_date: end,
-          notes: notes || undefined,
-        },
-      ],
-      { session }
-    );
-    await session.commitTransaction();
+    /** No Mongo session/transaction: standalone mongod does not support transactions (replica set only). */
+    const created = await Booking.create({
+      user_id: new mongoose.Types.ObjectId(req.user.sub),
+      equipment_id: new mongoose.Types.ObjectId(equipment_id),
+      status: "pending",
+      start_date: start,
+      end_date: end,
+      notes: notes || undefined,
+    });
     res.status(201).json(serializeBooking(created));
   } catch (e) {
-    await session.abortTransaction();
     console.error(e);
-    res.status(500).json({ error: "Could not create booking" });
-  } finally {
-    session.endSession();
+    const msg =
+      process.env.NODE_ENV === "development" && e?.message
+        ? e.message
+        : "Could not create booking";
+    res.status(500).json({ error: msg });
   }
 });
 
@@ -242,40 +234,32 @@ function canModerate(role) {
 }
 
 app.patch("/bookings/:id", authRequired, async (req, res) => {
-  const session = await mongoose.startSession();
-  session.startTransaction();
   try {
     if (!mongoose.isValidObjectId(req.params.id)) {
-      await session.abortTransaction();
       return res.status(404).json({ error: "Not found" });
     }
     const bookingId = req.params.id;
     const { action } = req.body || {};
     if (!["approve", "reject", "issue", "return"].includes(action)) {
-      await session.abortTransaction();
       return res.status(400).json({ error: "action must be approve|reject|issue|return" });
     }
 
-    const booking = await Booking.findById(bookingId).session(session);
+    const booking = await Booking.findById(bookingId);
     if (!booking) {
-      await session.abortTransaction();
       return res.status(404).json({ error: "Not found" });
     }
 
     if (action === "approve" || action === "reject") {
       if (!canModerate(req.user.role)) {
-        await session.abortTransaction();
         return res.status(403).json({ error: "Staff or admin only" });
       }
       if (booking.status !== "pending") {
-        await session.abortTransaction();
         return res.status(400).json({ error: "Only pending bookings can be approved/rejected" });
       }
       if (action === "reject") {
         booking.status = "rejected";
         booking.approved_by = new mongoose.Types.ObjectId(req.user.sub);
-        await booking.save({ session });
-        await session.commitTransaction();
+        await booking.save();
         return res.json(serializeBooking(booking));
       }
       const fit = await scheduleFits(
@@ -285,65 +269,53 @@ app.patch("/bookings/:id", authRequired, async (req, res) => {
         booking._id
       );
       if (!fit.ok) {
-        await session.abortTransaction();
         return res.status(409).json({
           error: "No free unit left for these dates (capacity exceeded)",
         });
       }
-      const eq = await Equipment.findById(booking.equipment_id).session(session);
+      const eq = await Equipment.findById(booking.equipment_id);
       if (!eq || eq.quantity_available < 1) {
-        await session.abortTransaction();
         return res.status(409).json({ error: "No units available for this equipment" });
       }
       eq.quantity_available -= 1;
-      await eq.save({ session });
+      await eq.save();
       booking.status = "approved";
       booking.approved_by = new mongoose.Types.ObjectId(req.user.sub);
-      await booking.save({ session });
-      await session.commitTransaction();
+      await booking.save();
       return res.json(serializeBooking(booking));
     }
 
     if (action === "issue") {
       if (!canModerate(req.user.role)) {
-        await session.abortTransaction();
         return res.status(403).json({ error: "Staff or admin only" });
       }
       if (booking.status !== "approved") {
-        await session.abortTransaction();
         return res.status(400).json({ error: "Only approved bookings can be issued" });
       }
       booking.status = "issued";
-      await booking.save({ session });
-      await session.commitTransaction();
+      await booking.save();
       return res.json(serializeBooking(booking));
     }
 
     if (action === "return") {
       if (!canModerate(req.user.role)) {
-        await session.abortTransaction();
         return res.status(403).json({ error: "Staff or admin only" });
       }
       if (booking.status !== "issued") {
-        await session.abortTransaction();
         return res.status(400).json({ error: "Only issued items can be marked returned" });
       }
-      const eq = await Equipment.findById(booking.equipment_id).session(session);
+      const eq = await Equipment.findById(booking.equipment_id);
       if (eq) {
         eq.quantity_available = Math.min(eq.quantity_total, eq.quantity_available + 1);
-        await eq.save({ session });
+        await eq.save();
       }
       booking.status = "returned";
-      await booking.save({ session });
-      await session.commitTransaction();
+      await booking.save();
       return res.json(serializeBooking(booking));
     }
   } catch (e) {
-    await session.abortTransaction();
     console.error(e);
     res.status(500).json({ error: "Update failed" });
-  } finally {
-    session.endSession();
   }
 });
 
